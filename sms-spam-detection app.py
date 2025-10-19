@@ -1,16 +1,21 @@
-# sms_spam_classifier.py
+# sms_spam_deployment_ready.py
 
 import streamlit as st
-import pickle
+import os
 import string
-import nltk
+import pickle
+import pandas as pd
 from nltk.corpus import stopwords
 from nltk.stem.porter import PorterStemmer
+import nltk
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.naive_bayes import MultinomialNB
 
-# Download NLTK data (only first time)
-nltk.download('punkt')
-nltk.download('stopwords')
-
+# ----------------------
+# NLTK setup
+# ----------------------
+nltk.download('punkt', quiet=True)
+nltk.download('stopwords', quiet=True)
 ps = PorterStemmer()
 
 # ----------------------
@@ -22,7 +27,7 @@ def transform_text(text):
 
     y = []
     for i in text:
-        if i.isalnum():  # keep only alphanumeric
+        if i.isalnum():
             y.append(i)
 
     text = y[:]
@@ -30,23 +35,28 @@ def transform_text(text):
 
     for i in text:
         if i not in stopwords.words('english') and i not in string.punctuation:
-            y.append(ps.stem(i))  # apply stemming
+            y.append(ps.stem(i))
 
     return " ".join(y)
 
-
 # ----------------------
-# TRAINING (only run once to create model.pkl & vectorizer.pkl)
+# Load or train model
 # ----------------------
-def train_and_save_model():
-    import pandas as pd
-    from sklearn.feature_extraction.text import CountVectorizer
-    from sklearn.naive_bayes import MultinomialNB
+MODEL_FILE = 'model.pkl'
+VECTORIZER_FILE = 'vectorizer.pkl'
 
-    # Load dataset (replace with your spam.csv path)
+if os.path.exists(MODEL_FILE) and os.path.exists(VECTORIZER_FILE):
+    # Load pre-trained model
+    with open(MODEL_FILE, 'rb') as f:
+        model = pickle.load(f)
+    with open(VECTORIZER_FILE, 'rb') as f:
+        vectorizer = pickle.load(f)
+else:
+    st.info("Training model, please wait...")
+
+    # Load dataset (make sure spam.csv is in the repo)
     df = pd.read_csv('spam.csv', encoding='latin-1')
-    df = df[['v1', 'v2']]  # v1 = label, v2 = message
-    df = df.rename(columns={'v1': 'label', 'v2': 'message'})
+    df = df[['v1', 'v2']].rename(columns={'v1':'label', 'v2':'message'})
 
     df['message'] = df['message'].apply(transform_text)
 
@@ -59,35 +69,25 @@ def train_and_save_model():
     model = MultinomialNB()
     model.fit(X_vec, y)
 
-    # Save model and vectorizer
-    with open('model.pkl', 'wb') as f:
+    # Save for future use
+    with open(MODEL_FILE, 'wb') as f:
         pickle.dump(model, f)
-    with open('vectorizer.pkl', 'wb') as f:
+    with open(VECTORIZER_FILE, 'wb') as f:
         pickle.dump(vectorizer, f)
 
-    st.success("Model trained and saved successfully!")
-
-
-# ----------------------
-# Load trained model & vectorizer
-# ----------------------
-with open('model.pkl', 'rb') as f:
-    model = pickle.load(f)
-
-with open('vectorizer.pkl', 'rb') as f:
-    vectorizer = pickle.load(f)
+    st.success("Model trained successfully!")
 
 # ----------------------
-# Streamlit app
+# Streamlit app UI
 # ----------------------
 st.title("SMS Spam Classifier 📩")
 
-menu = ["Predict SMS", "Train Model"]
+menu = ["Predict SMS", "About"]
 choice = st.sidebar.selectbox("Menu", menu)
 
 if choice == "Predict SMS":
-    st.subheader("Predict whether a message is Spam or Ham")
-    user_input = st.text_area("Enter your message:")
+    st.subheader("Enter your message to predict Spam or Ham")
+    user_input = st.text_area("Type your message here:")
 
     if st.button("Predict"):
         if user_input.strip() == "":
@@ -98,8 +98,13 @@ if choice == "Predict SMS":
             result = model.predict(vector_input)[0]
             st.success(f"Prediction: {result}")
 
-elif choice == "Train Model":
-    st.subheader("Train the SMS Spam Classifier")
-    st.info("This will retrain the model on your spam.csv dataset and overwrite existing model.pkl & vectorizer.pkl")
-    if st.button("Train Now"):
-        train_and_save_model()
+elif choice == "About":
+    st.subheader("About this App")
+    st.markdown("""
+    - This is an SMS Spam Classifier built with Streamlit.
+    - Uses **Naive Bayes** with **Bag-of-Words**.
+    - Automatically trains the model if not found.
+    - Preprocessing includes lowercase conversion, stopword removal, and stemming.
+    """)
+
+
