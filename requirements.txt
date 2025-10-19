@@ -1,4 +1,4 @@
-flask
-numpy
+streamlit
+scikit-learn
 pandas
-gunicorn
+nltk
